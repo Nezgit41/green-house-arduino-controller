@@ -20,7 +20,7 @@ const byte stepPin = 7;
 const byte directionPin = 8;
 const byte enablePin = 11;
 
-const int numReadings = 10;
+const int numReadings = 3;
 
 //переменыые состояния форточки и полива
 bool state_moister = false;
@@ -49,11 +49,11 @@ int average = 0;                // среднее значение
 #define RELAY_FAN 2 //пмн вентилятора
 
 //настройка значений для условий
-#define LIGHT_DETECT 700 //значение при котором отключается свет
+#define LIGHT_DETECT 600 //значение при котором отключается свет
 #define MOISTURE_DETECT 550 //значение при котором начинается полив
-#define TEMP_DETECT 30.30 //верхнее значение температуры
-#define TEMP_DOWN 27.20 //нижнее згачение температуры 
-#define STEP_NUM  7300 //количество шагов для шаг.двигателя
+#define TEMP_DETECT 27.30 //верхнее значение температуры
+#define TEMP_DOWN 25.20 //нижнее згачение температуры 
+#define STEP_NUM  7280 //количество шагов для шаг.двигателя
 
 RTC clock;
 
@@ -150,7 +150,7 @@ if (index >= numReadings){
 
 if (t >= TEMP_DETECT) {
   if (state_open == false){
-    digitalWrite(RELAY_FAN,LOW);
+    digitalWrite(RELAY_FAN, LOW);
     for (int i = 0; i < STEP_NUM; ++i) {
     // Делаем шаг
     digitalWrite(stepPin, HIGH);
@@ -165,18 +165,19 @@ if (t >= TEMP_DETECT) {
     if (state_open == true){ 
     digitalWrite(directionPin, HIGH);
     digitalWrite(enablePin, HIGH);
-    digitalWrite(RELAY_FAN,HIGH);
+    digitalWrite(RELAY_FAN, LOW);
     for (int i = 0; i < STEP_NUM; ++i) {
     digitalWrite(stepPin, HIGH);
     delay(delayTime);
     digitalWrite(stepPin, LOW);
     delay(delayTime);
     state_open = false;
-    }
+      }
     }
   }
 }
 
+digitalWrite(RELAY_FAN, HIGH);
 digitalWrite(directionPin, LOW);
 digitalWrite(enablePin, LOW);
 digitalWrite(RELAY_FAN,HIGH);
