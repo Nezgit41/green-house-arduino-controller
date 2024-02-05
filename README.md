@@ -3,3 +3,4 @@ Greenhouse automation controller based on arduino uno.
 - watering control
 - ventilating and opening of the shutter
 - temperature control 
+- log data on SD card
