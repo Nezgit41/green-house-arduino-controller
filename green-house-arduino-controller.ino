@@ -122,7 +122,7 @@ if (settingsFile) {
       MOISTURE_DETECT = line.substring(line.indexOf(' ') + 1).toInt();
     } else if (line.startsWith("TEMP_DETECT")) {
       TEMP_DETECT = line.substring(line.indexOf(' ') + 1).toFloat();
-    } else if (line.startsWith("EMP_DOWN")) {
+    } else if (line.startsWith("TEMP_DOWN")) {
       TEMP_DOWN = line.substring(line.indexOf(' ') + 1).toFloat();
     } else if (line.startsWith("STEP_NUM")) {
       STEP_NUM = line.substring(line.indexOf(' ') + 1).toInt();
