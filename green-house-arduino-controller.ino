@@ -118,7 +118,7 @@ if (settingsFile) {
     String line = settingsFile.readStringUntil('\n');
     if (line.startsWith("LIGHT_DETECT")) {
       LIGHT_DETECT = line.substring(line.indexOf(' ') + 1).toInt();
-    } else if (line.startsWith("#MOISTURE_DETECT")) {
+    } else if (line.startsWith("MOISTURE_DETECT")) {
       MOISTURE_DETECT = line.substring(line.indexOf(' ') + 1).toInt();
     } else if (line.startsWith("TEMP_DETECT")) {
       TEMP_DETECT = line.substring(line.indexOf(' ') + 1).toFloat();
