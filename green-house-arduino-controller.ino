@@ -5,7 +5,7 @@
 ██╔══██╗░░╚██╔╝░░  ██║╚████║██╔══╝░░██╔══╝░░██║░░╚██╗██║░░░██║░░░
 ██████╦╝░░░██║░░░  ██║░╚███║███████╗███████╗╚██████╔╝██║░░░██║░░░
 ╚═════╝░░░░╚═╝░░░  ╚═╝░░╚══╝╚══════╝╚══════╝░╚═════╝░╚═╝░░░╚═╝░░░
-last update 17.12.2023 19:55
+last update 05.02.2024 16:29
 */
 
 #include "DHT.h" 
@@ -50,11 +50,11 @@ int average = 0;                // среднее значение
 #define RELAY_FAN 2 //пмн вентилятора
 
 //настройка значений для условий
-#define LIGHT_DETECT 800 //значение при котором отключается свет
-#define MOISTURE_DETECT 550 //значение при котором начинается полив
-#define TEMP_DETECT 27.30 //верхнее значение температуры
-#define TEMP_DOWN 25.20 //нижнее згачение температуры 
-#define STEP_NUM  7280 //количество шагов для шаг.двигателя
+int LIGHT_DETECT = 0;
+int MOISTURE_DETECT = 0;
+float TEMP_DETECT = 0.0;
+float TEMP_DOWN = 0.0;
+int STEP_NUM = 0;
 
 RTC clock;
 
@@ -85,39 +85,60 @@ Watchdog.enable(RESET_MODE, WDT_PRESCALER_512);
   pinMode(CS_PIN, OUTPUT); // Определяем CS(контакт выбора) контакт как выход
  
   // Инициализация SD-карты
-  if (!SD.begin(CS_PIN))
-  {
-    Serial.println("Card Failure"); // Распечатываем в мониторе последовательного порта "Card Failure"("Сбой подключения к SD-карте")
-    return; // Останавливаем выполнение программы
-  }
-  Serial.println("Card Ready"); // Распечатываем в мониторе последовательного порта "Card Ready"("Карта готова к работе")
- 
-  //Чтение конфигурационного файла speed.txt
-  File commandFile = SD.open("speed.txt");
-  if (commandFile)
-  {
-     Serial.println("Reading Command File"); // Распечатываем в мониторе последовательного порта "Reading Command File"("Чтение конфигурационного файла")
-  
-     while(commandFile.available())
-     {
-       refresh_rate = commandFile.parseInt();
-     }
-     Serial.print("Refresh Rate = "); // Распечатываем в мониторе последовательного порта "Refresh Rate = " ("Частота обновления = ")
-     Serial.print(refresh_rate); // Распечатываем в мониторе последовательного порта значение переменной refresh_rate
-     Serial.println("ms"); // Распечатываем в мониторе последовательного порта "ms"("мс.")
-     commandFile.close(); // Закрываем файл
-  }  
-  else
-  {
-    Serial.println("Could not read command file."); // Распечатываем в мониторе последовательного порта("Не удалось прочитать конфигурационный файл")
-    return; // Останавливаем выполнение программы
-  }
-
-for (int thisReading = 0; thisReading < numReadings; thisReading++)
-  readings[thisReading] = 0;
-   
+if (!SD.begin(CS_PIN)) {
+  Serial.println("Card Failure");
+  return;
 }
 
+Serial.println("Card Ready");
+
+// Чтение конфигурационного файла speed.txt
+File commandFile = SD.open("speed.txt");
+if (commandFile) {
+  Serial.println("Reading Command File");
+  
+  while(commandFile.available()) {
+    refresh_rate = commandFile.parseInt();
+  }
+
+  Serial.print("Refresh Rate = ");
+  Serial.print(refresh_rate);
+  Serial.println("ms");
+  
+  commandFile.close();
+} else {
+  Serial.println("Could not read command file.");
+  return;
+}
+
+// Чтение настроек из файла setting.txt
+File settingsFile = SD.open("setting.txt");
+if (settingsFile) {
+  while (settingsFile.available()) {
+    String line = settingsFile.readStringUntil('\n');
+    if (line.startsWith("LIGHT_DETECT")) {
+      LIGHT_DETECT = line.substring(line.indexOf(' ') + 1).toInt();
+    } else if (line.startsWith("#MOISTURE_DETECT")) {
+      MOISTURE_DETECT = line.substring(line.indexOf(' ') + 1).toInt();
+    } else if (line.startsWith("TEMP_DETECT")) {
+      TEMP_DETECT = line.substring(line.indexOf(' ') + 1).toFloat();
+    } else if (line.startsWith("EMP_DOWN")) {
+      TEMP_DOWN = line.substring(line.indexOf(' ') + 1).toFloat();
+    } else if (line.startsWith("STEP_NUM")) {
+      STEP_NUM = line.substring(line.indexOf(' ') + 1).toInt();
+    }
+  }
+  settingsFile.close();
+} else {
+  Serial.println("Could not read setting file.");
+  return;
+}
+
+for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+  readings[thisReading] = 0;
+  }
+Watchdog.reset();
+}
 void loop() {
   
 delay (2000);
@@ -160,6 +181,7 @@ if (t >= TEMP_DETECT) {
     digitalWrite(stepPin, LOW);
     delay(delayTime);
     state_open = true;
+    Watchdog.reset();
     }
    }
 } else {
@@ -174,6 +196,7 @@ if (t >= TEMP_DETECT) {
     digitalWrite(stepPin, LOW);
     delay(delayTime);
     state_open = false;
+    Watchdog.reset();
       }
     }
   }
@@ -191,6 +214,8 @@ if (average > MOISTURE_DETECT) {
 else  {
   digitalWrite(RELAY_PUMP,LOW);
   state_moister == true;
+  Watchdog.reset();
+  delay (3000);
 }  
   
 if (photo > LIGHT_DETECT) {
