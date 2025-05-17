@@ -5,7 +5,7 @@
 ██╔══██╗░░╚██╔╝░░  ██║╚████║██╔══╝░░██╔══╝░░██║░░╚██╗██║░░░██║░░░
 ██████╦╝░░░██║░░░  ██║░╚███║███████╗███████╗╚██████╔╝██║░░░██║░░░
 ╚═════╝░░░░╚═╝░░░  ╚═╝░░╚══╝╚══════╝╚══════╝░╚═════╝░╚═╝░░░╚═╝░░░
-last update 09.12.2023 13:27
+last update 17.05.2025 20:51
 */
 
 #include "DHT.h" 
@@ -16,28 +16,19 @@ last update 09.12.2023 13:27
 #include <Adafruit_Sensor.h>
 #include "GyverWDT.h"
 
-//настройки шагового двигателя
-const byte stepPin = 7;
-const byte directionPin = 8;
-const byte enablePin = 11;
-
+const int WATER_PORTION_TIME = 500; 
+const int SENSOR_WAIT_TIME   = 3000;
 const int numReadings = 3;
-
-//переменыые состояния форточки и полива
 bool state_moister = false;
-bool state_open = false; 
+bool state_fan = false; 
 bool state_light = false; 
 
-int delayTime = 2;
-int pinMoisture=A0; //пин влажности почвы
-int pinPhoto=A2; //пин фоторезистора
-
-//среднее арефмитическое для датчика влажности почвы
-int readings[numReadings];      // данные, считанные с входного аналогового контакта
-int index = 0;                  // индекс для значения, которое считывается в данный момент
-int total = 0;                  // суммарное значение
-int average = 0;                // среднее значение
-
+int pinMoisture = A0;
+int pinPhoto = A2;
+int readings[numReadings];
+int index = 0;
+int total = 0;
+int average = 0;
 
 #define LEN_DOW 12
 #define LEN_TIME 12
@@ -45,201 +36,195 @@ int average = 0;                // среднее значение
 #define DHTTYPE DHT11
 #define CS_PIN 10   
 #define DHTPIN 9    
-#define RELAY_PUMP 5 //пин реле помпы
-#define RELAY_LAMP 6 //пин реле освещения
-#define RELAY_FAN 2 //пмн вентилятора
+#define RELAY_PUMP 5 
+#define RELAY_LAMP 6 
+#define RELAY_FAN 2  
 
-//настройка значений для условий
-int LIGHT_DETECT = 0; //значение при котором отключается свет
-int MOISTURE_DETECT = 0; //значение при котором начинается полив
-float TEMP_DETECT = 0; //верхнее значение температуры
-float TEMP_DOWN = 0; //нижнее згачение температуры 
-int STEP_NUM = 0; //количество шагов для шаг.двигателя
+int LIGHT_DETECT = 0;
+int MOISTURE_DETECT = 0;
+int MOISTURE_UP = 0;
+float TEMP_DETECT = 0;
+float TEMP_DOWN = 0;
 
 RTC clock;
 
-char time[LEN_TIME];
-char date[LEN_DATE];
+char timeStamp[LEN_TIME];
+char dateStamp[LEN_DATE];
 char weekDay[LEN_DOW];
 
 DHT dht(DHTPIN, DHTTYPE);
-int refresh_rate = 5000;
 
 void setup() {
-  
-Serial.begin(9600);
+  Serial.begin(9600); // Используем аппаратный Serial для Bluetooth и отладки
+
   dht.begin();
+  clock.begin();
+  clock.set(__TIMESTAMP__);
 
-clock.begin();
-clock.set(__TIMESTAMP__);
+  pinMode(RELAY_PUMP, OUTPUT); digitalWrite(RELAY_PUMP, LOW);
+  pinMode(RELAY_LAMP, OUTPUT); digitalWrite(RELAY_LAMP, LOW);
+  pinMode(RELAY_FAN, OUTPUT); digitalWrite(RELAY_FAN, HIGH);
+  Watchdog.enable(RESET_MODE, WDT_PRESCALER_512);
 
-pinMode(stepPin, OUTPUT);
-pinMode(directionPin, OUTPUT);
-pinMode(enablePin, OUTPUT);
-pinMode(RELAY_PUMP,OUTPUT);digitalWrite(RELAY_PUMP,LOW);
-pinMode(RELAY_LAMP,OUTPUT);digitalWrite(RELAY_LAMP,LOW);
-pinMode(RELAY_FAN, OUTPUT);digitalWrite(RELAY_FAN,HIGH);
-Watchdog.enable(RESET_MODE, WDT_PRESCALER_512);
-
-  Serial.println("Initializing Card"); // Распечатываем в мониторе последовательного порта "Initializing Card"("Инициализация карты")
-  pinMode(CS_PIN, OUTPUT); // Определяем CS(контакт выбора) контакт как выход
- 
-  // Инициализация SD-карты
-  if (!SD.begin(CS_PIN))
-  {
-    Serial.println("Card Failure"); // Распечатываем в мониторе последовательного порта "Card Failure"("Сбой подключения к SD-карте")
-    return; // Останавливаем выполнение программы
+  pinMode(CS_PIN, OUTPUT);
+  if (!SD.begin(CS_PIN)) {
+    Serial.println("Card Failure");
+    return;
   }
-  Serial.println("Card Ready"); // Распечатываем в мониторе последовательного порта "Card Ready"("Карта готова к работе")
- 
-  //Чтение конфигурационного файла speed.txt
-  File settingsFile = SD.open("settings.txt");
-  if (settingsFile)
-  {
-     Serial.println("Reading settings File"); // Распечатываем в мониторе последовательного порта "Reading Command File"("Чтение конфигурационного файла")
-  
-     while(settingsFile.available())
-     {
-      refresh_rate = settingsFile.parseInt();
-      LIGHT_DETECT = settingsFile.parseInt();
-      MOISTURE_DETECT = settingsFile.parseInt();
-      TEMP_DETECT = settingsFile.parseFloat();
-      TEMP_DOWN = settingsFile.parseFloat();
-      STEP_NUM = settingsFile.parseInt();
-     }
-     Serial.print("Refresh Rate = "); // Распечатываем в мониторе последовательного порта "Refresh Rate = " ("Частота обновления = ")
-     Serial.print(refresh_rate); // Распечатываем в мониторе последовательного порта значение переменной refresh_rate
-     Serial.println("ms"); // Распечатываем в мониторе последовательного порта "ms"("мс.")
-     settingsFile.close(); // Закрываем файл
-  }  
-  else
-  {
-    Serial.println("Could not read command file."); // Распечатываем в мониторе последовательного порта("Не удалось прочитать конфигурационный файл")
-    return; // Останавливаем выполнение программы
+  Serial.println("Card Ready");
+
+  File settingsFile = SD.open("setting.txt");
+  if (settingsFile) {
+    Serial.println("Reading settings File");
+
+    LIGHT_DETECT   = settingsFile.parseInt();
+    MOISTURE_DETECT = settingsFile.parseInt();
+    MOISTURE_UP = settingsFile.parseInt();
+    TEMP_DETECT    = settingsFile.parseFloat();
+    TEMP_DOWN      = settingsFile.parseFloat();
+    Watchdog.reset();
+
+    Serial.print("Light = "); Serial.println(LIGHT_DETECT);
+    Serial.print("Moister = "); Serial.println(MOISTURE_DETECT);
+    Serial.print("Moisture_up = "); Serial.println(MOISTURE_UP);
+    Serial.print("Temp_Detect = "); Serial.println(TEMP_DETECT);
+    Serial.print("Temp_Down = "); Serial.println(TEMP_DOWN);
+    Watchdog.reset();
+    settingsFile.close();
+  } else {
+    Serial.println("Could not read settings file.");
+    return;
   }
 
-for (int thisReading = 0; thisReading < numReadings; thisReading++)
-  readings[thisReading] = 0;
-Watchdog.reset();
+  for (int i = 0; i < numReadings; i++) {
+    readings[i] = 0;
+  }
+
+  Watchdog.reset();
 }
 
 void loop() {
+  delay(2000);
+  Watchdog.reset();
+  clock.read();
+  clock.getTimeStamp(timeStamp, dateStamp, weekDay);
+
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  int photo = analogRead(pinPhoto);
+
+  total = total - readings[index];
+  readings[index] = analogRead(pinMoisture);
+  total = total + readings[index];
+  index++;
   
-delay (2000);
-
-clock.read();
-clock.getTimeStamp(time, date, weekDay);
-float h = dht.readHumidity(); //считываем влажность
-float t = dht.readTemperature(); //считываем температуру
-int photo=analogRead(pinPhoto);
-
-  total= total - readings[index]; 
-  // ...которое было считано от сенсора:
-  readings[index] = analogRead(pinMoisture); 
-  // добавляем его к общей сумме:
-  total= total + readings[index];       
-  // продвигаемся к следующему значению в массиве:  
-  index = index + 1;                    
-
-if (index >= numReadings){              
-  // ...возвращаемся к началу: 
-  index = 0;                           
-
-  // вычисляем среднее значение:
-  average = total / numReadings;         
-  // выводим его на компьютер цифрами в кодировке ASCII    
-  delay(1);        // делаем задержку между считываниями – для стабильности программы
-
-} 
-
- digitalWrite(enablePin, HIGH);
- digitalWrite(directionPin, LOW);
-
-if (t >= TEMP_DETECT) {
-  if (state_open == false){
-    digitalWrite(RELAY_FAN, LOW);
-    for (int i = 0; i < STEP_NUM; ++i) {
-    // Делаем шаг
-    digitalWrite(stepPin, HIGH);
-    delay(delayTime);
-    digitalWrite(stepPin, LOW);
-    delay(delayTime);
-    state_open = true;
-    Watchdog.reset();
-    }
-   }
-} else {
-  if (t <= TEMP_DOWN) {
-    if (state_open == true){ 
-    digitalWrite(directionPin, HIGH);
-    digitalWrite(enablePin, HIGH);
-    digitalWrite(RELAY_FAN, LOW);
-    for (int i = 0; i < STEP_NUM; ++i) {
-    digitalWrite(stepPin, HIGH);
-    delay(delayTime);
-    digitalWrite(stepPin, LOW);
-    delay(delayTime);
-    state_open = false;
-    Watchdog.reset();
-      }
-    }
+  if (index >= numReadings) {
+    index = 0;
+    average = total / numReadings;
+    delay(1);
   }
+
+  if (t >= TEMP_DETECT) {
+    digitalWrite(RELAY_FAN, LOW);
+    state_fan = true;
+    Watchdog.reset();
+  } else if (t <= TEMP_DOWN) {
+    digitalWrite(RELAY_FAN, HIGH);
+    state_fan = false;
+    Watchdog.reset();
+  }
+
+  /*if (average > MOISTURE_DETECT) {
+    digitalWrite(RELAY_PUMP, HIGH);
+    state_moister = false;
+    Watchdog.reset();
+  } else {
+    digitalWrite(RELAY_PUMP, LOW);
+    state_moister = true;
+    Watchdog.reset();
+  }*/
+
+if (average <= MOISTURE_DETECT){
+    while (average <= MOISTURE_UP){
+        state_moister = true;
+        digitalWrite(RELAY_PUMP, LOW);
+        delay(WATER_PORTION_TIME);
+        digitalWrite(RELAY_PUMP, HIGH);
+        Watchdog.reset();
+        Serial.println(" "); 
+        Serial.print("date: "); Serial.print(dateStamp);
+        Serial.print(" time: "); Serial.println(timeStamp);
+        Serial.print("temp: "); Serial.println(t);
+        Serial.print("humidity: "); Serial.println(h);
+        Serial.print("moisture: "); Serial.println(average);
+        Serial.print("light: "); Serial.println(photo);
+        Serial.print("state_fan: "); Serial.println(state_fan);
+        Serial.print("state_light: "); Serial.println(state_light);
+        Serial.print("state_moister: "); Serial.println(state_moister);
+        delay(SENSOR_WAIT_TIME);
+        total = total - readings[index];
+        readings[index] = analogRead(pinMoisture);
+        total = total + readings[index];
+        index++;
+        if(index >= numReadings) {
+            index = 0;
+            average = total / numReadings;
+        } else {
+            average = total / numReadings;
+        }
+        Watchdog.reset();
+    }
+} else{
+    state_moister = false;
+    Watchdog.reset();
 }
 
-digitalWrite(RELAY_FAN, HIGH);
-digitalWrite(directionPin, LOW);
-digitalWrite(enablePin, LOW);
-digitalWrite(RELAY_FAN,HIGH);
 
-if (average > MOISTURE_DETECT) {
-  digitalWrite(RELAY_PUMP,HIGH); 
-  state_moister == false;
-}
-else  {
-  digitalWrite(RELAY_PUMP,LOW);
-  state_moister == true;
-}  
+  if (photo > LIGHT_DETECT) {
+    digitalWrite(RELAY_LAMP, HIGH);
+    state_light = false;
+  } else {
+    digitalWrite(RELAY_LAMP, LOW);
+    state_light = true;
+  }
   
-if (photo > LIGHT_DETECT) {
-  digitalWrite(RELAY_LAMP,HIGH);
-  state_light = false;
-}
-else {
-  digitalWrite(RELAY_LAMP,LOW);
-  state_light = true;
-}
-
-// Открываем файл и записываем в него данные
   File dataFile = SD.open("log.txt", FILE_WRITE);
-  if (dataFile)
-  {
-   
+  if (dataFile) {
+    dataFile.print("date=");
+    dataFile.print(dateStamp);
+    dataFile.print(" time=");
+    dataFile.println(timeStamp);
+    dataFile.print("temp=");
+    dataFile.println(t);
+    dataFile.print("humidity=");
+    dataFile.println(h);
+    dataFile.print("moisture=");
+    dataFile.println(average);
+    dataFile.print("light=");
+    dataFile.println(photo);
+    dataFile.print("state_fan=");
+    dataFile.println(state_fan);
+    dataFile.print("state_light=");
+    dataFile.println(state_light);
+    dataFile.print("state_moister=");
+    dataFile.println(state_moister);
     dataFile.println(" ");
-    dataFile.println(" ");
-    dataFile.print(time);dataFile.print("\t");
-    dataFile.print(date);dataFile.print("\t");
-    dataFile.println(" ");
-    dataFile.print("temp=");dataFile.print(t);
-    dataFile.println(" ");
-    dataFile.print("humidity=");dataFile.print(h);
-    dataFile.println(" ");
-    dataFile.print("moisture=");dataFile.print(average);
-    dataFile.println(" ");
-    dataFile.print("light=");dataFile.print(photo);
-    dataFile.println(" ");
-    dataFile.print("state_open=");dataFile.print(state_open);
-    dataFile.println(" ");
-    dataFile.print("state_moister=");dataFile.print(state_moister);
-    dataFile.close(); // Внимание! Данные не будут записаны, пока вы не закроете соединение!
+    dataFile.close();
+    Watchdog.reset();
   }
-Serial.println(" ");
-Serial.print(time);Serial.print("\t");
-Serial.print(date);Serial.print("\t");  
-Serial.println(" ");
-Serial.print("temp: ");Serial.println(t);
-Serial.print("humidity: ");Serial.println(h);
-Serial.print("moisture: ");Serial.println(average);
-Serial.print("light: ");Serial.println(photo);
-Serial.print("state: ");Serial.println(state_open);
-Watchdog.reset();
+
+  // Отправка данных по аппаратному Serial (Bluetooth)
+  Serial.println(" "); 
+  Serial.print("date: "); Serial.print(dateStamp);
+  Serial.print(" time: "); Serial.println(timeStamp);
+  Serial.print("temp: "); Serial.println(t);
+  Serial.print("humidity: "); Serial.println(h);
+  Serial.print("moisture: "); Serial.println(average);
+  Serial.print("light: "); Serial.println(photo);
+  Serial.print("state_fan: "); Serial.println(state_fan);
+  Serial.print("state_light: "); Serial.println(state_light);
+  Serial.print("state_moister: "); Serial.println(state_moister);
+
+  Watchdog.reset();
 }
+
